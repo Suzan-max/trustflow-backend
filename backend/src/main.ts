@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
+import * as express from 'express';
 import { AppModule } from './app.module';
 import { SentryService } from './sentry/sentry.service';
 import { SentryExceptionFilter } from './common/filters/sentry-exception.filter';
@@ -28,6 +29,16 @@ process.on('uncaughtException', (error: Error) => {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Explicit body-size limit for JSON payloads.
+  // The IPFS pin endpoint accepts base64-encoded deliverable content; 10 MB decoded
+  // encodes to ~13.6 MB base64, so a 15 MB JSON limit gives adequate headroom while
+  // still providing a deliberate, reviewed DoS control rather than relying on Express's
+  // implicit default.  Override via BODY_LIMIT_MB env var if your use case requires it.
+  const bodyLimitMb = parseInt(process.env.BODY_LIMIT_MB || '15', 10);
+  const bodyLimit = `${bodyLimitMb}mb`;
+  app.use(express.json({ limit: bodyLimit }));
+  app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 
   // Initialize Sentry via the injectable service so it shares the same instance
   const sentryService = app.get(SentryService);
